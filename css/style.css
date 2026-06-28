@@ -96,6 +96,29 @@ body {
 }
 
 /* =============================================
+   ENLACE PERSONALIZADO
+   ============================================= */
+.enlace-personalizado {
+  background: var(--blanco);
+  border-bottom: 1.5px solid var(--verde-borde);
+  padding: 0.8rem 3rem;
+  text-align: center;
+}
+
+.enlace-personalizado a {
+  font-size: 20px;
+  font-weight: 500;
+  color: #5DADE2; /* Azul celeste */
+  text-decoration: none;
+  transition: color var(--transicion);
+}
+
+.enlace-personalizado a:hover {
+  color: #3498DB;
+  text-decoration: underline;
+}
+
+/* =============================================
    MAIN
    ============================================= */
 .site-main {
@@ -563,6 +586,14 @@ html {
 
   .logo {
     font-size: 26px;
+  }
+
+  .enlace-personalizado {
+    padding: 0.7rem 1.5rem;
+  }
+
+  .enlace-personalizado a {
+    font-size: 20px;
   }
 
   .site-main {
