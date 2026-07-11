@@ -286,7 +286,7 @@ function abrirReproductor(indice, mantenerPantallaCompleta = false) {
   indiceActual = indice;
   const pelicula     = todasLasPeliculas[indice];
   const nombreLimpio = pelicula.name.replace(/\.[^/.]+$/, '');
-  const urlVideo = `https://drive.google.com/uc?id=${pelicula.id}&export=download`;
+  const urlVideo = `${API_BASE}/${pelicula.id}?alt=media&key=${API_KEY}`;
 
   elModalTitulo.textContent = nombreLimpio;
 
