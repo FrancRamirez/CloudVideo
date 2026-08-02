@@ -99,6 +99,21 @@
         <source id="video-src" src="" type="video/mp4" />
         Tu navegador no soporta la reproducción de video.
       </video>
+
+      <!-- Reproductor de emergencia: iframe embebido de Google Drive.
+           Se activa solo si el reproductor principal falla. -->
+      <iframe
+        id="reproductor-fallback"
+        class="oculto"
+        allow="autoplay; fullscreen"
+        allowfullscreen
+        frameborder="0"
+      ></iframe>
+
+      <!-- Aviso visible cuando se está usando el modo de emergencia -->
+      <p id="aviso-fallback" class="aviso-fallback oculto">
+        Reproduciendo en modo alternativo (Google Drive)
+      </p>
     </div>
   </div>
 

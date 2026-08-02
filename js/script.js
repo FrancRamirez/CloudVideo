@@ -36,6 +36,12 @@ const elOverlay     = document.getElementById('modal-overlay');
 const elCerrar      = document.getElementById('modal-cerrar');
 const elModalTitulo = document.getElementById('modal-titulo');
 
+/* Reproductor de emergencia (fallback) */
+const elVideoNativo   = document.getElementById('reproductor');
+const elIframeFallback = document.getElementById('reproductor-fallback');
+const elAvisoFallback  = document.getElementById('aviso-fallback');
+let fallbackActivo = false;
+
 /* --------------------------------------------------
    INSTANCIA DE PLYR
    -------------------------------------------------- */
@@ -279,11 +285,59 @@ function actualizarBarraTarjeta(fileId, tiempo, duracion) {
 }
 
 /* =============================================
+   REPRODUCTOR DE EMERGENCIA (FALLBACK)
+   Se activa cuando el reproductor principal (Plyr)
+   dispara un error de carga/reproducción.
+   Usa el iframe embebido de Google Drive, que no
+   depende de la API Key ni de restricciones de referrer.
+   ============================================= */
+function activarFallback(fileId) {
+  if (fallbackActivo) return; // Evitar activarlo más de una vez por video
+  fallbackActivo = true;
+
+  console.warn('[CloudVideo] Reproductor principal falló, activando modo de emergencia (Drive embed).');
+
+  /* Detenemos el guardado de progreso: el iframe de Drive
+     no expone eventos de tiempo/duración que podamos leer. */
+  detenerGuardadoProgreso();
+
+  /* Ocultamos el reproductor Plyr y mostramos el iframe */
+  const contenedorPlyr = document.querySelector('.modal-contenido .plyr');
+  if (contenedorPlyr) contenedorPlyr.classList.add('oculto');
+  elVideoNativo.classList.add('oculto');
+
+  elIframeFallback.src = `https://drive.google.com/file/d/${fileId}/preview`;
+  elIframeFallback.classList.remove('oculto');
+  elAvisoFallback.classList.remove('oculto');
+}
+
+/* Restablece el estado visual para el próximo video que se abra */
+function reiniciarFallback() {
+  fallbackActivo = false;
+  elIframeFallback.src = '';
+  elIframeFallback.classList.add('oculto');
+  elAvisoFallback.classList.add('oculto');
+
+  const contenedorPlyr = document.querySelector('.modal-contenido .plyr');
+  if (contenedorPlyr) contenedorPlyr.classList.remove('oculto');
+  elVideoNativo.classList.remove('oculto');
+}
+
+/* Escuchamos errores del elemento <video> nativo.
+   Plyr no intercepta este evento, así que lo tomamos directo del DOM. */
+elVideoNativo.addEventListener('error', () => {
+  const pelicula = todasLasPeliculas[indiceActual];
+  if (pelicula) activarFallback(pelicula.id);
+});
+
+/* =============================================
    ABRIR REPRODUCTOR
    Recibe el índice del video en la lista.
    ============================================= */
 function abrirReproductor(indice, mantenerPantallaCompleta = false) {
   indiceActual = indice;
+  reiniciarFallback();
+
   const pelicula     = todasLasPeliculas[indice];
   const nombreLimpio = pelicula.name.replace(/\.[^/.]+$/, '');
   const urlVideo = `${API_BASE}/${pelicula.id}?alt=media&key=${API_KEY}`;
@@ -338,6 +392,13 @@ function cerrarReproductor() {
   guardarProgreso();
   detenerGuardadoProgreso();
   reproductor.pause();
+
+  /* Si estaba activo el fallback, cortamos el iframe para que no
+     siga sonando de fondo (los iframes no se pausan con .pause()) */
+  if (fallbackActivo) {
+    elIframeFallback.src = '';
+  }
+
   elModal.classList.add('oculto');
   document.body.style.overflow = '';
   indiceActual = -1;
