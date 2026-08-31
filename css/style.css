@@ -479,22 +479,6 @@ body {
   display: block;
 }
 
-/* Reproductor de emergencia (iframe de Drive) */
-.modal-contenido iframe#reproductor-fallback {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border: none;
-  display: block;
-}
-
-.aviso-fallback {
-  text-align: center;
-  font-size: 20px;
-  color: #d9a441;
-  background: #2a2416;
-  padding: 0.5rem;
-}
-
 /* ---- Reproductor Plyr ocupa todo el ancho ---- */
 .modal-contenido video,
 .modal-contenido .plyr {

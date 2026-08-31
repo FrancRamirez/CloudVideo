@@ -36,12 +36,6 @@ const elOverlay     = document.getElementById('modal-overlay');
 const elCerrar      = document.getElementById('modal-cerrar');
 const elModalTitulo = document.getElementById('modal-titulo');
 
-/* Reproductor de emergencia (fallback) */
-const elVideoNativo   = document.getElementById('reproductor');
-const elIframeFallback = document.getElementById('reproductor-fallback');
-const elAvisoFallback  = document.getElementById('aviso-fallback');
-let fallbackActivo = false;
-
 /* --------------------------------------------------
    INSTANCIA DE PLYR
    -------------------------------------------------- */
@@ -285,6 +279,7 @@ function actualizarBarraTarjeta(fileId, tiempo, duracion) {
 }
 
 /* =============================================
+<<<<<<< HEAD
    REPRODUCTOR DE EMERGENCIA (FALLBACK)
    Se activa cuando el reproductor principal (Plyr)
    dispara un error de carga/reproducción.
@@ -330,27 +325,99 @@ elVideoNativo.addEventListener('error', () => {
   if (pelicula) activarFallback(pelicula.id);
 });
 
+/* --------------------------------------------------
+   🩺 VIGÍA DE REPRODUCCIÓN (WATCHDOG)
+   --------------------------------------------------
+   Cuando Drive corta una respuesta a mitad de la
+   descarga (ej: cuota de descarga del archivo agotada
+   → 403 → ERR_BLOCKED_BY_ORB), el navegador NO siempre
+   dispara un evento 'error' limpio en el <video>: a veces
+   simplemente se queda "esperando" datos para siempre.
+   Este vigía detecta ese cuelgue y activa el fallback.
+   -------------------------------------------------- */
+let vigiaTimeout = null;
+
+function armarVigia() {
+  desarmarVigia();
+  /* Si el video queda "esperando" datos (buffering/red)
+     y no se recupera en 6s, lo tratamos como falla. */
+  vigiaTimeout = setTimeout(() => {
+    const pelicula = todasLasPeliculas[indiceActual];
+    if (pelicula && !fallbackActivo) {
+      console.warn('[CloudVideo] Vigía: el video no se recuperó del buffering, forzando fallback.');
+      activarFallback(pelicula.id);
+    }
+  }, 6000);
+}
+
+function desarmarVigia() {
+  if (vigiaTimeout) {
+    clearTimeout(vigiaTimeout);
+    vigiaTimeout = null;
+  }
+}
+
+/* 'waiting' = el video se quedó sin datos para seguir reproduciendo.
+   Si esto pasa y no se resuelve rápido, es la firma típica del corte
+   de Drive a mitad de stream. 'playing'/'timeupdate' cancelan la alarma
+   porque confirman que sí está avanzando. */
+elVideoNativo.addEventListener('waiting', armarVigia);
+elVideoNativo.addEventListener('stalled', armarVigia);
+elVideoNativo.addEventListener('playing', desarmarVigia);
+elVideoNativo.addEventListener('timeupdate', desarmarVigia);
+
 /* =============================================
+   CHEQUEO PREVIO DE LA URL DE DRIVE
+   Antes de mostrarle el player al usuario, probamos
+   con un pedido chico (Range de 1 byte) si Drive
+   realmente va a servir el archivo. Si responde 403
+   (cuota agotada, permisos, etc.), vamos directo al
+   fallback en vez de mostrar una pantalla negra.
+   ============================================= */
+async function urlVideoDisponible(url) {
+  try {
+    const respuesta = await fetch(url, { headers: { Range: 'bytes=0-0' } });
+    return respuesta.ok || respuesta.status === 206;
+  } catch (error) {
+    console.warn('[CloudVideo] Chequeo previo de URL falló:', error);
+    return false;
+  }
+}
+
+/* =============================================
+=======
+>>>>>>> parent of 4cb897f (Nuevo repdoructor de video: Solo se ejecutará en caso de que el reproductor actual no reaccione correctamente.)
    ABRIR REPRODUCTOR
    Recibe el índice del video en la lista.
    ============================================= */
-function abrirReproductor(indice, mantenerPantallaCompleta = false) {
+async function abrirReproductor(indice, mantenerPantallaCompleta = false) {
   indiceActual = indice;
+<<<<<<< HEAD
   reiniciarFallback();
+  desarmarVigia();
 
+=======
+>>>>>>> parent of 4cb897f (Nuevo repdoructor de video: Solo se ejecutará en caso de que el reproductor actual no reaccione correctamente.)
   const pelicula     = todasLasPeliculas[indice];
   const nombreLimpio = pelicula.name.replace(/\.[^/.]+$/, '');
   const urlVideo = `${API_BASE}/${pelicula.id}?alt=media&key=${API_KEY}`;
 
   elModalTitulo.textContent = nombreLimpio;
+  elModal.classList.remove('oculto');
+  document.body.style.overflow = 'hidden';
+
+  /* Chequeo previo: si Drive ya nos va a rechazar este archivo,
+     no perdamos tiempo mostrando el player nativo. */
+  const disponible = await urlVideoDisponible(urlVideo);
+  if (!disponible) {
+    activarFallback(pelicula.id);
+    return;
+  }
 
   reproductor.source = {
     type: 'video',
     sources: [{ src: urlVideo, type: 'video/mp4' }],
   };
-
-  elModal.classList.remove('oculto');
-  document.body.style.overflow = 'hidden';
 
   reproductor.once('ready', () => {
     reproductor.play();
@@ -391,14 +458,8 @@ function cerrarReproductor() {
   /* Guardamos el progreso al cerrar manualmente */
   guardarProgreso();
   detenerGuardadoProgreso();
+  desarmarVigia();
   reproductor.pause();
-
-  /* Si estaba activo el fallback, cortamos el iframe para que no
-     siga sonando de fondo (los iframes no se pausan con .pause()) */
-  if (fallbackActivo) {
-    elIframeFallback.src = '';
-  }
-
   elModal.classList.add('oculto');
   document.body.style.overflow = '';
   indiceActual = -1;
