@@ -36,12 +36,6 @@ const elOverlay     = document.getElementById('modal-overlay');
 const elCerrar      = document.getElementById('modal-cerrar');
 const elModalTitulo = document.getElementById('modal-titulo');
 
-/* Reproductor de emergencia (fallback) */
-const elVideoNativo   = document.getElementById('reproductor');
-const elIframeFallback = document.getElementById('reproductor-fallback');
-const elAvisoFallback  = document.getElementById('aviso-fallback');
-let fallbackActivo = false;
-
 /* --------------------------------------------------
    INSTANCIA DE PLYR
    -------------------------------------------------- */
@@ -285,6 +279,7 @@ function actualizarBarraTarjeta(fileId, tiempo, duracion) {
 }
 
 /* =============================================
+<<<<<<< HEAD
    REPRODUCTOR DE EMERGENCIA (FALLBACK)
    Se activa cuando el reproductor principal (Plyr)
    dispara un error de carga/reproducción.
@@ -390,14 +385,19 @@ async function urlVideoDisponible(url) {
 }
 
 /* =============================================
+=======
+>>>>>>> parent of 4cb897f (Nuevo repdoructor de video: Solo se ejecutará en caso de que el reproductor actual no reaccione correctamente.)
    ABRIR REPRODUCTOR
    Recibe el índice del video en la lista.
    ============================================= */
 async function abrirReproductor(indice, mantenerPantallaCompleta = false) {
   indiceActual = indice;
+<<<<<<< HEAD
   reiniciarFallback();
   desarmarVigia();
 
+=======
+>>>>>>> parent of 4cb897f (Nuevo repdoructor de video: Solo se ejecutará en caso de que el reproductor actual no reaccione correctamente.)
   const pelicula     = todasLasPeliculas[indice];
   const nombreLimpio = pelicula.name.replace(/\.[^/.]+$/, '');
   const urlVideo = `${API_BASE}/${pelicula.id}?alt=media&key=${API_KEY}`;
@@ -460,13 +460,6 @@ function cerrarReproductor() {
   detenerGuardadoProgreso();
   desarmarVigia();
   reproductor.pause();
-
-  /* Si estaba activo el fallback, cortamos el iframe para que no
-     siga sonando de fondo (los iframes no se pausan con .pause()) */
-  if (fallbackActivo) {
-    elIframeFallback.src = '';
-  }
-
   elModal.classList.add('oculto');
   document.body.style.overflow = '';
   indiceActual = -1;
