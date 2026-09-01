@@ -12,6 +12,11 @@ const API_KEY   = 'AIzaSyDEid4OE0K8wXenn9LxOwvvjNi0uMtu8zE';
 const FOLDER_ID = '1tSRXw35deTcH4yTeJQGrAK69rq0XojwY';
 
 /* --------------------------------------------------
+   🖥️  FUENTE LOCAL — servidor local (server.js)
+   -------------------------------------------------- */
+const LOCAL_API_BASE = 'http://localhost:4000';
+
+/* --------------------------------------------------
    🎬  TIPOS DE ARCHIVO DE VIDEO SOPORTADOS
    -------------------------------------------------- */
 const TIPOS_VIDEO = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'ogv'];
@@ -35,6 +40,10 @@ const elModal       = document.getElementById('modal-reproductor');
 const elOverlay     = document.getElementById('modal-overlay');
 const elCerrar      = document.getElementById('modal-cerrar');
 const elModalTitulo = document.getElementById('modal-titulo');
+
+/* Selector de fuente (Drive / Local) */
+const elFuenteDrive = document.getElementById('fuente-drive');
+const elFuenteLocal = document.getElementById('fuente-local');
 
 /* Reproductor de emergencia (fallback) */
 const elVideoNativo   = document.getElementById('reproductor');
@@ -88,6 +97,7 @@ const reproductor = new Plyr('#reproductor', {
    -------------------------------------------------- */
 let todasLasPeliculas = []; // Lista completa ordenada
 let indiceActual      = -1; // Índice del video en reproducción
+let fuenteActual      = 'drive'; // 'drive' | 'local'
 
 /* =============================================
    FUNCIÓN PRINCIPAL: cargar archivos de Drive
@@ -133,6 +143,66 @@ async function cargarPeliculas() {
     mostrarEstado('error');
   }
 }
+
+/* =============================================
+   CARGAR ARCHIVOS DESDE EL SERVIDOR LOCAL
+   (carpeta local servida por server.js)
+   ============================================= */
+async function cargarPeliculasLocal() {
+  mostrarEstado('cargando');
+
+  try {
+    const respuesta = await fetch(`${LOCAL_API_BASE}/api/videos`);
+
+    if (!respuesta.ok) {
+      const datos = await respuesta.json().catch(() => ({}));
+      throw new Error(datos.error || `Error HTTP ${respuesta.status}`);
+    }
+
+    const datos    = await respuesta.json();
+    const archivos = datos.files || [];
+
+    /* Mismo formato que usa la fuente Drive, así todo el resto
+       del código (grid, reproductor, progreso) funciona sin cambios */
+    todasLasPeliculas = archivos.filter(archivo => esVideo(archivo));
+
+    if (todasLasPeliculas.length === 0) {
+      mostrarEstado('vacio');
+      return;
+    }
+
+    renderizarGrid(todasLasPeliculas);
+    actualizarBarraEspacio(todasLasPeliculas);
+    mostrarEstado('coleccion');
+
+  } catch (error) {
+    console.error('[CloudVideo] Error al cargar servidor local:', error);
+    elTextoError.textContent =
+      `No se pudo conectar con el servidor local (${LOCAL_API_BASE}). ` +
+      `Verificá que esté corriendo "node server.js". Detalle: ${error.message}`;
+    mostrarEstado('error');
+  }
+}
+
+/* =============================================
+   CAMBIAR DE FUENTE (Drive / Local)
+   ============================================= */
+function cambiarFuente(fuente) {
+  if (fuente === fuenteActual) return;
+  fuenteActual = fuente;
+
+  elFuenteDrive.classList.toggle('fuente-activa', fuente === 'drive');
+  elFuenteLocal.classList.toggle('fuente-activa', fuente === 'local');
+
+  if (fuente === 'drive') {
+    cargarPeliculas();
+  } else {
+    cargarPeliculasLocal();
+  }
+}
+
+elFuenteDrive.addEventListener('click', () => cambiarFuente('drive'));
+elFuenteLocal.addEventListener('click', () => cambiarFuente('local'));
 
 /* =============================================
    ¿Es un archivo de video?
@@ -326,6 +396,7 @@ function reiniciarFallback() {
 /* Escuchamos errores del elemento <video> nativo.
    Plyr no intercepta este evento, así que lo tomamos directo del DOM. */
 elVideoNativo.addEventListener('error', () => {
+  if (fuenteActual === 'local') return; // El fallback usa el embed de Drive, no aplica a Local
   const pelicula = todasLasPeliculas[indiceActual];
   if (pelicula) activarFallback(pelicula.id);
 });
@@ -340,13 +411,15 @@ function abrirReproductor(indice, mantenerPantallaCompleta = false) {
 
   const pelicula     = todasLasPeliculas[indice];
   const nombreLimpio = pelicula.name.replace(/\.[^/.]+$/, '');
-  const urlVideo = `${API_BASE}/${pelicula.id}?alt=media&key=${API_KEY}`;
+  const urlVideo = fuenteActual === 'local'
+    ? `${LOCAL_API_BASE}/video/${pelicula.id}`
+    : `${API_BASE}/${pelicula.id}?alt=media&key=${API_KEY}`;
 
   elModalTitulo.textContent = nombreLimpio;
 
   reproductor.source = {
     type: 'video',
-    sources: [{ src: urlVideo, type: 'video/mp4' }],
+    sources: [{ src: urlVideo, type: pelicula.mimeType || 'video/mp4' }],
   };
 
   elModal.classList.remove('oculto');

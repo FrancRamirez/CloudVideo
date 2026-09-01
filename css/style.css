@@ -96,6 +96,52 @@ body {
 }
 
 /* =============================================
+   SELECTOR DE FUENTE (Drive / Local)
+   ============================================= */
+.selector-fuente {
+  display: flex;
+  gap: 6px;
+  background: var(--verde-claro);
+  border: 1.5px solid var(--verde-borde);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.fuente-boton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  padding: 0.5rem 0.9rem;
+  font-size: 16px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--verde);
+  opacity: 0.55;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.fuente-boton:hover {
+  opacity: 0.85;
+}
+
+.fuente-boton.fuente-activa {
+  opacity: 1;
+  background: var(--verde-borde);
+}
+
+@media (max-width: 600px) {
+  .fuente-boton {
+    font-size: 14px;
+    padding: 0.45rem 0.7rem;
+  }
+}
+
+/* =============================================
    ENLACE PERSONALIZADO
    ============================================= */
 .enlace-personalizado {
