@@ -70,11 +70,11 @@ function setCors(req, res) {
    -------------------------------------------------- */
 function peticionAutorizada(req, url) {
   const origen = req.headers.origin;
+  const origenPropio = `http://${req.headers.host}`; // p.ej. http://192.168.1.36:4000
 
-  /* El origen debe estar en la whitelist. Peticiones sin
-     header Origin (ej. curl, o video servido en <video src>
-     que a veces no lo manda) se evalúan solo por token. */
-  if (origen && !ORIGENES_PERMITIDOS.includes(origen)) {
+  /* El origen debe estar en la whitelist, o ser el propio servidor
+     (cuando la página se sirve desde acá mismo, caso TV/mismo origen). */
+  if (origen && origen !== origenPropio && !ORIGENES_PERMITIDOS.includes(origen)) {
     return false;
   }
 
@@ -207,6 +207,60 @@ function manejarVideo(req, res, id) {
 }
 
 /* --------------------------------------------------
+   📄  ARCHIVOS ESTÁTICOS (frontend servido localmente)
+   Al entrar directo a http://<IP>:4000/ desde la TV,
+   la página y el servidor quedan en el MISMO origen:
+   no hace falta CORS ni el permiso de "red privada"
+   que algunos navegadores (Brave, Chrome) piden cuando
+   una página https externa llama a una IP local.
+   -------------------------------------------------- */
+const RAIZ_ESTATICA = __dirname;
+
+const MIME_ESTATICOS = {
+  '.html': 'text/html; charset=utf-8',
+  '.css':  'text/css; charset=utf-8',
+  '.js':   'text/javascript; charset=utf-8',
+  '.png':  'image/png',
+  '.jpg':  'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg':  'image/svg+xml',
+  '.ico':  'image/x-icon',
+};
+
+/* Rutas de archivo estático permitidas (whitelist explícita,
+   para no convertir esto en un servidor de archivos genérico) */
+const ARCHIVOS_ESTATICOS_PERMITIDOS = new Set([
+  '/', '/index.html',
+  '/css/style.css',
+  '/js/script.js',
+  '/assets/icon_drive.png',
+]);
+
+function manejarEstatico(req, res, pathname) {
+  const rutaRelativa = pathname === '/' ? '/index.html' : pathname;
+
+  if (!ARCHIVOS_ESTATICOS_PERMITIDOS.has(rutaRelativa)) {
+    res.writeHead(404);
+    res.end('No encontrado');
+    return;
+  }
+
+  const rutaCompleta = path.join(RAIZ_ESTATICA, rutaRelativa);
+  const ext  = path.extname(rutaCompleta).toLowerCase();
+  const mime = MIME_ESTATICOS[ext] || 'application/octet-stream';
+
+  fs.readFile(rutaCompleta, (err, contenido) => {
+    if (err) {
+      res.writeHead(404);
+      res.end('No encontrado');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': mime });
+    res.end(contenido);
+  });
+}
+
+/* --------------------------------------------------
    SERVIDOR
    -------------------------------------------------- */
 const servidor = http.createServer((req, res) => {
@@ -219,6 +273,14 @@ const servidor = http.createServer((req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  /* Los archivos estáticos (HTML/CSS/JS/assets) se sirven libres:
+     son de solo lectura y sin datos sensibles. Lo que sí exige
+     token es la API (listado y streaming de video). */
+  if (req.method === 'GET' && ARCHIVOS_ESTATICOS_PERMITIDOS.has(url.pathname)) {
+    manejarEstatico(req, res, url.pathname);
+    return;
+  }
 
   if (!peticionAutorizada(req, url)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });

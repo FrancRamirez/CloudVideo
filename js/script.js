@@ -28,10 +28,15 @@ const LOCAL_PUERTO = 4000;
 
 const LOCAL_API_BASE = (() => {
   const host = location.hostname;
-  const esLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
-  return esLocal
-    ? `http://localhost:${LOCAL_PUERTO}`
-    : `http://${LOCAL_LAN_IP}:${LOCAL_PUERTO}`;
+  const esLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '';
+  if (esLocalhost) return `http://localhost:${LOCAL_PUERTO}`;
+
+  /* Si la página ya se está sirviendo DESDE el propio servidor local
+     (ej. abierta como http://192.168.1.36:4000/ en la TV), usamos
+     el mismo origen: no hay cross-origin, no se pide ningún permiso. */
+  if (location.port === String(LOCAL_PUERTO)) return location.origin;
+
+  return `http://${LOCAL_LAN_IP}:${LOCAL_PUERTO}`;
 })();
 
 /* --------------------------------------------------
