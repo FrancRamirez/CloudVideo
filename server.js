@@ -20,6 +20,26 @@ const PUERTO      = process.env.PORT || 4000;
 const CARPETA     = 'C:\\Users\\franc\\OneDrive\\Escritorio\\Peliculas en Pendrive\\Cloudvideo';
 const TIPOS_VIDEO = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'ogv'];
 
+/* --------------------------------------------------
+   🔒  SEGURIDAD
+   -------------------------------------------------- */
+
+/* TOKEN: clave secreta que el frontend debe enviar en cada
+   petición (?token=... o header X-CloudVideo-Token).
+   CAMBIÁ este valor por uno propio antes de exponer el
+   servidor en la red local. */
+const TOKEN_SECRETO = 'cleopatra';
+
+/* ORÍGENES PERMITIDOS: solo estas páginas pueden hacer
+   fetch al servidor. Cualquier otro origen es rechazado
+   antes de tocar el filesystem. */
+const ORIGENES_PERMITIDOS = [
+  'https://francramirez.github.io',
+  'http://localhost:5500',       // Live Server (VSC) por defecto
+  'http://127.0.0.1:5500',
+  'null',                        // por si se abre el .html directo con doble clic
+];
+
 const MIME_POR_EXT = {
   mp4:  'video/mp4',
   webm: 'video/webm',
@@ -30,15 +50,39 @@ const MIME_POR_EXT = {
 };
 
 /* --------------------------------------------------
-   Cabeceras CORS — necesarias porque la página
-   (framirezdev / GitHub Pages) y el servidor local
-   corren en orígenes distintos.
+   Cabeceras CORS — solo se habilita el origen puntual
+   que hizo la petición, si está en la lista permitida.
    -------------------------------------------------- */
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function setCors(req, res) {
+  const origen = req.headers.origin;
+  if (origen && ORIGENES_PERMITIDOS.includes(origen)) {
+    res.setHeader('Access-Control-Allow-Origin', origen);
+  }
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, X-CloudVideo-Token');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
+}
+
+/* --------------------------------------------------
+   Verifica origen + token antes de procesar cualquier
+   petición real (no OPTIONS).
+   -------------------------------------------------- */
+function peticionAutorizada(req, url) {
+  const origen = req.headers.origin;
+
+  /* El origen debe estar en la whitelist. Peticiones sin
+     header Origin (ej. curl, o video servido en <video src>
+     que a veces no lo manda) se evalúan solo por token. */
+  if (origen && !ORIGENES_PERMITIDOS.includes(origen)) {
+    return false;
+  }
+
+  const tokenHeader = req.headers['x-cloudvideo-token'];
+  const tokenQuery  = url.searchParams.get('token');
+  const token       = tokenHeader || tokenQuery;
+
+  return token === TOKEN_SECRETO;
 }
 
 /* --------------------------------------------------
@@ -166,7 +210,7 @@ function manejarVideo(req, res, id) {
    SERVIDOR
    -------------------------------------------------- */
 const servidor = http.createServer((req, res) => {
-  setCors(res);
+  setCors(req, res);
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -175,6 +219,12 @@ const servidor = http.createServer((req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (!peticionAutorizada(req, url)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'No autorizado' }));
+    return;
+  }
 
   if (url.pathname === '/api/videos' && req.method === 'GET') {
     manejarListado(req, res);
@@ -191,7 +241,15 @@ const servidor = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: 'Ruta no encontrada' }));
 });
 
-servidor.listen(PUERTO, () => {
-  console.log(`[CloudVideo] Servidor local corriendo en http://localhost:${PUERTO}`);
+/* Bind explícito: '0.0.0.0' escucha en todas las interfaces
+   (necesario para que la LAN te alcance), pero solo se llega
+   hasta acá si pasaste el chequeo de origen + token de arriba. */
+servidor.listen(PUERTO, '0.0.0.0', () => {
+  console.log(`[CloudVideo] Servidor corriendo en el puerto ${PUERTO}`);
+  console.log(`[CloudVideo] Accesible en tu PC como: http://localhost:${PUERTO}`);
+  console.log(`[CloudVideo] Accesible en tu LAN como: http://<IP-de-tu-PC>:${PUERTO}`);
   console.log(`[CloudVideo] Sirviendo carpeta: ${CARPETA}`);
+  if (TOKEN_SECRETO === 'CAMBIAR-ESTA-CLAVE-POR-UNA-PROPIA') {
+    console.warn('[CloudVideo] ⚠️  Estás usando el token por defecto. Cambialo en server.js y en script.js antes de exponerte a la LAN.');
+  }
 });

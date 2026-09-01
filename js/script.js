@@ -14,7 +14,25 @@ const FOLDER_ID = '1tSRXw35deTcH4yTeJQGrAK69rq0XojwY';
 /* --------------------------------------------------
    🖥️  FUENTE LOCAL — servidor local (server.js)
    -------------------------------------------------- */
-const LOCAL_API_BASE = 'http://localhost:4000';
+
+/* Debe ser EXACTAMENTE el mismo valor que TOKEN_SECRETO en server.js */
+const LOCAL_TOKEN = 'cleopatra';
+
+/* IP de tu PC en la red local (la ves con "ipconfig" en Windows,
+   buscá "Dirección IPv4"). Se usa solo cuando abrís la página
+   desde GitHub Pages; si la abrís en localhost/127.0.0.1 (Live
+   Server), se conecta directo a localhost sin que tengas que
+   tocar nada. */
+const LOCAL_LAN_IP = '192.168.1.36';
+const LOCAL_PUERTO = 4000;
+
+const LOCAL_API_BASE = (() => {
+  const host = location.hostname;
+  const esLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
+  return esLocal
+    ? `http://localhost:${LOCAL_PUERTO}`
+    : `http://${LOCAL_LAN_IP}:${LOCAL_PUERTO}`;
+})();
 
 /* --------------------------------------------------
    🎬  TIPOS DE ARCHIVO DE VIDEO SOPORTADOS
@@ -152,7 +170,9 @@ async function cargarPeliculasLocal() {
   mostrarEstado('cargando');
 
   try {
-    const respuesta = await fetch(`${LOCAL_API_BASE}/api/videos`);
+    const respuesta = await fetch(`${LOCAL_API_BASE}/api/videos`, {
+      headers: { 'X-CloudVideo-Token': LOCAL_TOKEN },
+    });
 
     if (!respuesta.ok) {
       const datos = await respuesta.json().catch(() => ({}));
@@ -412,7 +432,7 @@ function abrirReproductor(indice, mantenerPantallaCompleta = false) {
   const pelicula     = todasLasPeliculas[indice];
   const nombreLimpio = pelicula.name.replace(/\.[^/.]+$/, '');
   const urlVideo = fuenteActual === 'local'
-    ? `${LOCAL_API_BASE}/video/${pelicula.id}`
+    ? `${LOCAL_API_BASE}/video/${pelicula.id}?token=${encodeURIComponent(LOCAL_TOKEN)}`
     : `${API_BASE}/${pelicula.id}?alt=media&key=${API_KEY}`;
 
   elModalTitulo.textContent = nombreLimpio;
