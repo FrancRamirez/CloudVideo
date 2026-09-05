@@ -32,7 +32,7 @@ process.on('unhandledRejection', (err) => {
 /* --------------------------------------------------
    ⚙️  CONFIGURACIÓN (mismos valores que server.js)
    -------------------------------------------------- */
-const CARPETA = 'C:\\CloudVideo';
+const CARPETA     = 'C:\\Users\\franc\\OneDrive\\Escritorio\\Peliculas en Pendrive\\Cloudvideo';
 const TIPOS_VIDEO = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'ogv'];
 const PUERTO_HTTP = 4001;               // puerto del servidor DLNA (distinto del 4000)
 const NOMBRE_SERVIDOR = 'CloudVideo (Franc)'; // nombre que va a mostrar la TV
@@ -359,10 +359,7 @@ function manejarVideo(req, res, id) {
   // el disco en segundo plano sin que nadie los consuma, compitiendo
   // por I/O con los pedidos nuevos y haciendo todo cada vez más lento.
   res.on('close', () => {
-    if (!res.writableFinished) {
-      stream.destroy();
-      console.log(`[CloudVideo DLNA] 🧹 Stream liberado (pedido abandonado): ${video.archivo}  bytes=${inicio}-${finReal}`);
-    }
+    if (!res.writableFinished) stream.destroy();
   });
 
   stream.pipe(res);
@@ -373,13 +370,26 @@ function manejarVideo(req, res, id) {
    -------------------------------------------------- */
 const servidorHttp = http.createServer((req, res) => {
   const inicio = Date.now();
-  console.log(`[CloudVideo DLNA] → ${req.method} ${req.url}${req.headers.range ? '  Range: ' + req.headers.range : ''}`);
-  res.on('finish', () => {
-    console.log(`[CloudVideo DLNA] ← ${res.statusCode} ${req.method} ${req.url}  (${Date.now() - inicio}ms)`);
-  });
+  const esVideo = req.url.startsWith('/video/');
+
+  // OJO: en Windows, console.log a una terminal es una operación
+  // SÍNCRONA que se pone cada vez más lenta a medida que crece el
+  // scroll de la ventana. Con la TV pidiendo decenas de rangos por
+  // segundo durante la reproducción, loguear cada uno terminaba
+  // siendo el verdadero cuello de botella (lo confirmamos comparando
+  // contra un benchmark de disco puro, que sí fue rápido y estable).
+  // Por eso NO logueamos el camino caliente (/video/); solo las
+  // rutas poco frecuentes (SSDP, browse, description.xml), que sirven
+  // para diagnosticar sin generar volumen.
+  if (!esVideo) {
+    console.log(`[CloudVideo DLNA] → ${req.method} ${req.url}`);
+    res.on('finish', () => {
+      console.log(`[CloudVideo DLNA] ← ${res.statusCode} ${req.method} ${req.url}  (${Date.now() - inicio}ms)`);
+    });
+  }
   res.on('close', () => {
-    if (!res.writableFinished) {
-      console.log(`[CloudVideo DLNA] ✂️  Conexión cortada ANTES de terminar: ${req.method} ${req.url}${req.headers.range ? '  Range: ' + req.headers.range : ''}  (${Date.now() - inicio}ms)`);
+    if (!res.writableFinished && !esVideo) {
+      console.log(`[CloudVideo DLNA] ✂️  Conexión cortada ANTES de terminar: ${req.method} ${req.url}  (${Date.now() - inicio}ms)`);
     }
   });
   try {
