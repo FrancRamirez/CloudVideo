@@ -287,29 +287,66 @@ function manejarVideo(req, res, id) {
   const stats = fs.statSync(rutaCompleta);
   const rango = req.headers.range;
 
-  if (!rango) {
-    res.writeHead(200, {
-      'Content-Type': video.mime,
-      'Content-Length': stats.size,
-      'Accept-Ranges': 'bytes',
-    });
-    fs.createReadStream(rutaCompleta).pipe(res);
+  let inicio = 0;
+  let finReal = stats.size - 1;
+  let esParcial = false;
+
+  if (rango) {
+    /* El header Range tiene 3 formas posibles:
+       "bytes=100-200"  -> tramo específico
+       "bytes=100-"     -> desde el byte 100 hasta el final
+       "bytes=-500"     -> "sufijo": los últimos 500 bytes del archivo
+       Esta última es clave: muchos reproductores la usan para leer el
+       índice (moov atom) al final de un mp4 que no está optimizado
+       para streaming ("faststart"), y si no la interpretamos bien la
+       conexión se rompe a mitad de la reproducción. */
+    const match = rango.match(/^bytes=(\d*)-(\d*)$/);
+    if (match) {
+      const [, inicioStr, finStr] = match;
+      if (inicioStr === '' && finStr !== '') {
+        const n = parseInt(finStr, 10);
+        inicio = Math.max(stats.size - n, 0);
+        finReal = stats.size - 1;
+      } else {
+        inicio = inicioStr === '' ? 0 : parseInt(inicioStr, 10);
+        finReal = finStr === '' ? stats.size - 1 : Math.min(parseInt(finStr, 10), stats.size - 1);
+      }
+      esParcial = true;
+    }
+  }
+
+  if (!Number.isFinite(inicio) || !Number.isFinite(finReal) || inicio < 0 || inicio > finReal) {
+    res.writeHead(416, { 'Content-Range': `bytes */${stats.size}` });
+    res.end();
     return;
   }
 
-  const [inicioStr, finStr] = rango.replace(/bytes=/, '').split('-');
-  const inicio = parseInt(inicioStr, 10);
-  const fin = finStr ? parseInt(finStr, 10) : stats.size - 1;
-  const finReal = Math.min(fin, stats.size - 1);
   const largo = finReal - inicio + 1;
-
-  res.writeHead(206, {
+  const headers = {
     'Content-Type': video.mime,
-    'Content-Range': `bytes ${inicio}-${finReal}/${stats.size}`,
     'Accept-Ranges': 'bytes',
     'Content-Length': largo,
+  };
+  if (esParcial) {
+    headers['Content-Range'] = `bytes ${inicio}-${finReal}/${stats.size}`;
+  }
+  res.writeHead(esParcial ? 206 : 200, headers);
+
+  const stream = fs.createReadStream(rutaCompleta, { start: inicio, end: finReal });
+
+  // Si falla la lectura del archivo a mitad de camino, cerramos la
+  // respuesta en vez de dejar la conexión colgada sin avisar nada.
+  stream.on('error', (err) => {
+    console.error('[CloudVideo DLNA] ❌ Error leyendo el archivo de video:', err);
+    if (!res.headersSent) res.writeHead(500);
+    res.end();
   });
-  fs.createReadStream(rutaCompleta, { start: inicio, end: finReal }).pipe(res);
+
+  // Si la TV corta la conexión (cambia de pantalla, etc.), liberamos
+  // el stream en vez de dejarlo leyendo al pedo.
+  req.on('close', () => stream.destroy());
+
+  stream.pipe(res);
 }
 
 /* --------------------------------------------------
