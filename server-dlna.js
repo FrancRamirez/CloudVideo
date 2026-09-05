@@ -18,6 +18,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+/* Red de seguridad: si algo se nos escapa sin capturar, lo logueamos
+   completo (con stack trace) en vez de dejar que Node cierre el
+   proceso en silencio como venía pasando. Esto es clave para poder
+   diagnosticar qué estaba fallando al conectar la Smart TV. */
+process.on('uncaughtException', (err) => {
+  console.error('[CloudVideo DLNA] ❌❌ EXCEPCIÓN NO CAPTURADA:', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[CloudVideo DLNA] ❌❌ PROMESA RECHAZADA SIN MANEJAR:', err);
+});
+
 /* --------------------------------------------------
    ⚙️  CONFIGURACIÓN (mismos valores que server.js)
    -------------------------------------------------- */
@@ -305,6 +316,18 @@ function manejarVideo(req, res, id) {
    SERVIDOR HTTP (descripción + control + video)
    -------------------------------------------------- */
 const servidorHttp = http.createServer((req, res) => {
+  try {
+    manejarPeticionHttp(req, res);
+  } catch (err) {
+    console.error('[CloudVideo DLNA] ❌ Error manejando petición:', err);
+    try {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Error interno');
+    } catch { /* la respuesta puede ya estar enviada */ }
+  }
+});
+
+function manejarPeticionHttp(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === '/description.xml') {
@@ -329,8 +352,14 @@ const servidorHttp = http.createServer((req, res) => {
     let cuerpo = '';
     req.on('data', chunk => (cuerpo += chunk));
     req.on('end', () => {
-      // Solo implementamos Browse (es lo único que piden las TVs para listar)
-      responderBrowse(res);
+      try {
+        // Solo implementamos Browse (es lo único que piden las TVs para listar)
+        responderBrowse(res);
+      } catch (err) {
+        console.error('[CloudVideo DLNA] ❌ Error en /control (Browse):', err);
+        res.writeHead(500);
+        res.end();
+      }
     });
     return;
   }
@@ -339,7 +368,13 @@ const servidorHttp = http.createServer((req, res) => {
     let cuerpo = '';
     req.on('data', chunk => (cuerpo += chunk));
     req.on('end', () => {
-      responderGetProtocolInfo(res);
+      try {
+        responderGetProtocolInfo(res);
+      } catch (err) {
+        console.error('[CloudVideo DLNA] ❌ Error en /control-cm (GetProtocolInfo):', err);
+        res.writeHead(500);
+        res.end();
+      }
     });
     return;
   }
@@ -351,7 +386,7 @@ const servidorHttp = http.createServer((req, res) => {
 
   res.writeHead(404);
   res.end('No encontrado');
-});
+}
 
 servidorHttp.listen(PUERTO_HTTP, IP_LOCAL, () => {
   console.log(`[CloudVideo DLNA] Servidor HTTP en http://${IP_LOCAL}:${PUERTO_HTTP}`);
@@ -386,37 +421,41 @@ function iniciarSsdp() {
   }
 
   socket.on('message', (mensaje, rinfo) => {
-    const texto = mensaje.toString();
-    if (!texto.startsWith('M-SEARCH')) return;
+    try {
+      const texto = mensaje.toString();
+      if (!texto.startsWith('M-SEARCH')) return;
 
-    const st = texto.match(/ST:\s*(.+)\r\n/i);
-    const buscando = st ? st[1].trim() : '';
+      const st = texto.match(/ST:\s*(.+)\r\n/i);
+      const buscando = st ? st[1].trim() : '';
 
-    const combos = combosNotificacion();
-    const coincidencias = buscando === 'ssdp:all'
-      ? combos
-      : combos.filter(c => c.nt === buscando);
+      const combos = combosNotificacion();
+      const coincidencias = buscando === 'ssdp:all'
+        ? combos
+        : combos.filter(c => c.nt === buscando);
 
-    if (coincidencias.length === 0) return;
+      if (coincidencias.length === 0) return;
 
-    // Pequeño delay aleatorio (como pide el estándar SSDP) para no
-    // saturar a la TV con respuestas simultáneas de varios dispositivos
-    coincidencias.forEach((combo, i) => {
-      setTimeout(() => {
-        const respuesta =
-          'HTTP/1.1 200 OK\r\n' +
-          'CACHE-CONTROL: max-age=1800\r\n' +
-          `LOCATION: http://${IP_LOCAL}:${PUERTO_HTTP}/description.xml\r\n` +
-          `SERVER: ${HEADER_SERVER}\r\n` +
-          `ST: ${combo.nt}\r\n` +
-          `USN: ${combo.usn}\r\n` +
-          'EXT: \r\n' +
-          'BOOTID.UPNP.ORG: 1\r\n' +
-          'CONFIGID.UPNP.ORG: 1\r\n' +
-          '\r\n';
-        socket.send(respuesta, rinfo.port, rinfo.address);
-      }, i * 100);
-    });
+      // Pequeño delay aleatorio (como pide el estándar SSDP) para no
+      // saturar a la TV con respuestas simultáneas de varios dispositivos
+      coincidencias.forEach((combo, i) => {
+        setTimeout(() => {
+          const respuesta =
+            'HTTP/1.1 200 OK\r\n' +
+            'CACHE-CONTROL: max-age=1800\r\n' +
+            `LOCATION: http://${IP_LOCAL}:${PUERTO_HTTP}/description.xml\r\n` +
+            `SERVER: ${HEADER_SERVER}\r\n` +
+            `ST: ${combo.nt}\r\n` +
+            `USN: ${combo.usn}\r\n` +
+            'EXT: \r\n' +
+            'BOOTID.UPNP.ORG: 1\r\n' +
+            'CONFIGID.UPNP.ORG: 1\r\n' +
+            '\r\n';
+          socket.send(respuesta, rinfo.port, rinfo.address);
+        }, i * 100);
+      });
+    } catch (err) {
+      console.error('[CloudVideo DLNA] ❌ Error procesando mensaje SSDP:', err);
+    }
   });
 
   socket.on('error', err => console.error('[CloudVideo DLNA] Error SSDP:', err.message));
