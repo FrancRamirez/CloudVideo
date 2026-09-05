@@ -430,6 +430,19 @@ servidorHttp.listen(PUERTO_HTTP, IP_LOCAL, () => {
   iniciarSsdp();
 });
 
+/* Por defecto Node cierra las conexiones "keep-alive" inactivas a los
+   5 segundos. Durante streaming de video eso es demasiado agresivo:
+   si la TV hace una pausa breve entre pedidos (buffering, cambio de
+   posición, etc.) el servidor corta la conexión y la TV lo muestra
+   como "el dispositivo de la red se está desconectando", aunque no
+   haya habido ningún error real. Estiramos esos tiempos bastante. */
+servidorHttp.keepAliveTimeout = 120000; // 2 minutos de inactividad permitida
+servidorHttp.headersTimeout = 125000;   // siempre debe ser mayor al de arriba
+servidorHttp.requestTimeout = 0;        // sin límite de tiempo por pedido (archivos grandes)
+servidorHttp.on('connection', (socket) => {
+  socket.setTimeout(0); // sin timeout de inactividad a nivel socket
+});
+
 /* --------------------------------------------------
    SSDP: anuncio y respuesta a búsquedas de la TV
    -------------------------------------------------- */
