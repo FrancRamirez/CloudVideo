@@ -332,6 +332,15 @@ function manejarVideo(req, res, id) {
   }
   res.writeHead(esParcial ? 206 : 200, headers);
 
+  // Un HEAD solo pide los headers (tamaño, si soporta Range, etc.),
+  // sin el cuerpo. Muchos reproductores DLNA lo mandan antes de pedir
+  // el video real; si le devolviéramos el archivo completo igual,
+  // puede confundir al reproductor.
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+
   const stream = fs.createReadStream(rutaCompleta, { start: inicio, end: finReal });
 
   // Si falla la lectura del archivo a mitad de camino, cerramos la
@@ -342,9 +351,19 @@ function manejarVideo(req, res, id) {
     res.end();
   });
 
-  // Si la TV corta la conexión (cambia de pantalla, etc.), liberamos
-  // el stream en vez de dejarlo leyendo al pedo.
-  req.on('close', () => stream.destroy());
+  // Si la TV corta la conexión a mitad de camino (cambia de pantalla,
+  // pide otro rango, etc.), 'res' es lo que refleja eso — 'req' puede
+  // cerrarse mucho antes (apenas termina de mandar el pedido) sin que
+  // eso signifique que la respuesta se cortó. Si escuchábamos 'req'
+  // en vez de 'res', estos streams de lectura podían quedar leyendo
+  // el disco en segundo plano sin que nadie los consuma, compitiendo
+  // por I/O con los pedidos nuevos y haciendo todo cada vez más lento.
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      stream.destroy();
+      console.log(`[CloudVideo DLNA] 🧹 Stream liberado (pedido abandonado): ${video.archivo}  bytes=${inicio}-${finReal}`);
+    }
+  });
 
   stream.pipe(res);
 }
@@ -353,6 +372,16 @@ function manejarVideo(req, res, id) {
    SERVIDOR HTTP (descripción + control + video)
    -------------------------------------------------- */
 const servidorHttp = http.createServer((req, res) => {
+  const inicio = Date.now();
+  console.log(`[CloudVideo DLNA] → ${req.method} ${req.url}${req.headers.range ? '  Range: ' + req.headers.range : ''}`);
+  res.on('finish', () => {
+    console.log(`[CloudVideo DLNA] ← ${res.statusCode} ${req.method} ${req.url}  (${Date.now() - inicio}ms)`);
+  });
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      console.log(`[CloudVideo DLNA] ✂️  Conexión cortada ANTES de terminar: ${req.method} ${req.url}${req.headers.range ? '  Range: ' + req.headers.range : ''}  (${Date.now() - inicio}ms)`);
+    }
+  });
   try {
     manejarPeticionHttp(req, res);
   } catch (err) {
