@@ -32,7 +32,7 @@ process.on('unhandledRejection', (err) => {
 /* --------------------------------------------------
    ⚙️  CONFIGURACIÓN (mismos valores que server.js)
    -------------------------------------------------- */
-const CARPETA     = 'C:\\Users\\franc\\OneDrive\\Escritorio\\Peliculas en Pendrive\\Cloudvideo';
+const CARPETA = 'C:\\CloudVideo';
 const TIPOS_VIDEO = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'ogv'];
 const PUERTO_HTTP = 4001;               // puerto del servidor DLNA (distinto del 4000)
 const NOMBRE_SERVIDOR = 'CloudVideo (Franc)'; // nombre que va a mostrar la TV
